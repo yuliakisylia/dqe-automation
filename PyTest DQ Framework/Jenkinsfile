@@ -1,0 +1,60 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Install dependencies') {
+            steps {
+                dir('PyTest DQ Framework') {
+                    sh 'python -m pip install -r requirements.txt'
+                }
+            }
+        }
+
+        stage('Run PyTest DQ checks') {
+            steps {
+                dir('PyTest DQ Framework') {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'jenkins-postgres-credentials',
+                        usernameVariable: 'POSTGRES_SECRET_USR',
+                        passwordVariable: 'POSTGRES_SECRET_PSW'
+                    )]) {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            sh '''
+                                mkdir -p html_report
+                                pytest tests -m "parquet_data" \
+                                    --db_host="postgres" \
+                                    --db_port="5432" \
+                                    --db_name="mydatabase" \
+                                    --db_user="$POSTGRES_SECRET_USR" \
+                                    --db_password="$POSTGRES_SECRET_PSW" \
+                                    --html=html_report/report.html \
+                                    --self-contained-html
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Archive HTML report') {
+            steps {
+                archiveArtifacts(
+                    artifacts: 'PyTest DQ Framework/html_report/**',
+                    allowEmptyArchive: true
+                )
+            }
+        }
+
+        stage('Publish HTML report') {
+            steps {
+                publishHTML(target: [
+                    allowMissing: false,
+                    keepAll: true,
+                    reportDir: 'PyTest DQ Framework/html_report',
+                    reportFiles: 'report.html',
+                    reportName: 'PyTest DQ Report'
+                ])
+            }
+        }
+    }
+}
