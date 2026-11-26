@@ -42,7 +42,17 @@ def test_check_dataset_is_not_empty(target_data, data_quality_library):
 @pytest.mark.parquet_data
 @pytest.mark.patient_sum_treatment_cost_per_facility_type
 def test_check_data_completeness(source_data, target_data, data_quality_library):
-    data_quality_library.check_data_completeness(source_data, target_data)
+    expected_partition = target_data["facility_type"].str.replace(
+        " ", "_", regex=False
+    )
+    data_quality_library.check_partition_column_consistency(
+        target_data, "facility_type_partition", expected_partition
+    )
+    data_quality_library.check_data_completeness(
+        source_data,
+        target_data,
+        allowed_partition_columns=["facility_type_partition"],
+    )
 
 
 @pytest.mark.parquet_data

@@ -13,20 +13,41 @@ class DataQualityLibrary:
 
     @staticmethod
     def check_data_completeness(
-        df_expected: pd.DataFrame, df_actual: pd.DataFrame
+        df_expected: pd.DataFrame,
+        df_actual: pd.DataFrame,
+        allowed_partition_columns: Optional[List[str]] = None,
     ) -> None:
-        if (
-            len(df_expected.columns) != len(df_actual.columns)
-            or set(df_expected.columns) != set(df_actual.columns)
-        ):
-            raise AssertionError(
-                "Data completeness failed: column names differ. "
-                f"Expected: {list(df_expected.columns)}; "
-                f"actual: {list(df_actual.columns)}."
+        expected_columns = list(df_expected.columns)
+        if allowed_partition_columns is None:
+            allowed_partition_columns = []
+        overlapping_columns = set(expected_columns).intersection(
+            allowed_partition_columns
+        )
+        if overlapping_columns:
+            raise ValueError(
+                "Partition columns cannot also be expected business columns: "
+                f"{sorted(overlapping_columns)}."
             )
 
-        expected = df_expected.loc[:, list(df_expected.columns)].copy()
-        actual = df_actual.loc[:, list(df_expected.columns)].copy()
+        missing_columns = [
+            column for column in expected_columns if column not in df_actual.columns
+        ]
+        unexpected_columns = [
+            column
+            for column in df_actual.columns
+            if column not in expected_columns
+            and column not in allowed_partition_columns
+        ]
+        if missing_columns or unexpected_columns:
+            raise AssertionError(
+                "Data completeness failed: business columns differ. "
+                f"Missing expected columns: {missing_columns}; "
+                f"unexpected columns: {unexpected_columns}; "
+                f"allowed partition columns: {allowed_partition_columns}."
+            )
+
+        expected = df_expected.loc[:, expected_columns].copy()
+        actual = df_actual.loc[:, expected_columns].copy()
 
         for column in expected.columns:
             if (
@@ -87,6 +108,38 @@ class DataQualityLibrary:
                 f"Expected-only rows:\n{expected_mismatches}\n"
                 f"Actual-only rows:\n{actual_mismatches}\n"
                 f"Comparison details: {error}"
+            ) from error
+
+    @staticmethod
+    def check_partition_column_consistency(
+        df: pd.DataFrame,
+        partition_column: str,
+        expected_values: pd.Series,
+    ) -> None:
+        DataQualityLibrary._validate_columns(df, [partition_column])
+        actual = df[partition_column].reset_index(drop=True)
+        expected = expected_values.reset_index(drop=True)
+        if len(expected) != len(actual):
+            raise ValueError(
+                f"Expected partition values for {len(actual)} rows, "
+                f"received {len(expected)}."
+            )
+
+        try:
+            pd.testing.assert_series_equal(
+                actual,
+                expected,
+                check_dtype=False,
+                check_names=False,
+            )
+        except AssertionError as error:
+            matches = actual.eq(expected) | (actual.isna() & expected.isna())
+            mismatches = pd.DataFrame(
+                {"expected": expected, "actual": actual}
+            ).loc[~matches].head(10)
+            raise AssertionError(
+                f"Partition column '{partition_column}' does not match its "
+                f"business values.\nMismatches:\n{mismatches}"
             ) from error
 
     @staticmethod

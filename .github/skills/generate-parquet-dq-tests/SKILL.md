@@ -29,6 +29,7 @@ Do not proceed with dataset tests if the mapping is missing, does not identify t
 
 - One dataset name, matching its folder under `/parquet_data/`.
 - The corresponding mapping entry in `docs/parquet-aggregated-data-mapping.md`, including output columns, grain, measures, join path, and any explicitly stated filters or transformations.
+- The explicitly identified technical partition column names that may appear in the reader result, if any. Get these from the user or a maintained dataset contract; do not infer them from ETL code or generated Parquet output.
 - Author and requirement identifier for the module header, or permission to leave those fields as placeholders.
 
 Use the mapping as the only source for expected SQL. Do not use `data_dev/`, pipeline or parquet-loader SQL, generated Parquet output, previews, or test results to infer or adjust expected results.
@@ -42,8 +43,10 @@ Use the mapping as the only source for expected SQL. Do not use `data_dev/`, pip
 5. Tests must call the reusable methods in `src/data_quality/data_quality_validation_library.py`. Do not implement replacement pandas comparisons or use empty/trivial assertions.
 6. Include all five checks: non-empty smoke, completeness, count, uniqueness, and not-null. Uniqueness must check the mapped grain columns—not merely all columns. The not-null list must include every mapped output column.
 7. Mark every test with `parquet_data` and the requested dataset-specific marker. Mark only the non-empty test with `smoke`. Do not use the `example` marker.
-8. Never compare the target to itself or alter the mapping-derived expected result to make a test pass. A discrepancy is evidence to investigate in the transformation, not a reason to weaken validation.
-9. Do not modify framework files unless the user separately and explicitly requests a framework change.
+8. Pass only explicitly identified technical partition columns to `allowed_partition_columns` (omit the argument or pass an empty list when there are none). Missing mapped columns and any unlisted extra columns must still fail completeness.
+9. If partition columns are present and their derivation from business columns is documented, validate that relationship separately through the reusable DQ library.
+10. Never compare the target to itself or alter the mapping-derived expected result to make a test pass. A discrepancy is evidence to investigate in the transformation, not a reason to weaken validation.
+11. Do not modify framework files unless the user separately and explicitly requests a framework change.
 
 ## Workflow
 
@@ -51,8 +54,9 @@ Use the mapping as the only source for expected SQL. Do not use `data_dev/`, pip
 2. Confirm that the mapping fully specifies the expected result. If not, stop and ask for clarification; do not inspect pipeline SQL or infer behavior from Parquet.
 3. Build `source_query` from the mapping: select the mapped dimensions and measures, join only the mapped source tables and keys, apply only mapped transformations and filters, alias every output column, and group by the mapped grain.
 4. Create module-scoped `source_data` and `target_data` fixtures using PostgreSQL for expected data and `ParquetReader` for actual data, including partition subfolders.
-5. Add the five tests from the template. Pass the mapped grain to `check_duplicates` and all mapped output columns to `check_not_null_values`.
-6. Review the generated module against the hard rules and self-review checklist. Do not generate modules for other datasets unless requested separately.
+5. Add the five tests from the template. Pass the explicitly identified partition columns to completeness, the mapped grain to `check_duplicates`, and all mapped output columns to `check_not_null_values`.
+6. If partition columns are present, validate their documented relationship to business columns with the reusable DQ library.
+7. Review the generated module against the hard rules and self-review checklist. Do not generate modules for other datasets unless requested separately.
 
 ## Template
 
@@ -92,7 +96,11 @@ def test_check_dataset_is_not_empty(target_data, data_quality_library):
 @pytest.mark.parquet_data
 @pytest.mark.<dataset_name>
 def test_check_data_completeness(source_data, target_data, data_quality_library):
-    data_quality_library.check_data_completeness(source_data, target_data)
+    data_quality_library.check_data_completeness(
+        source_data,
+        target_data,
+        allowed_partition_columns=['<technical_partition_column>'],
+    )
 
 
 @pytest.mark.parquet_data
@@ -143,5 +151,6 @@ Confirm every item below is true before proceeding to Step 3:
 - [x] This skill contains no concrete expected SQL for `facility_name_min_time_spent_per_visit_date`, `facility_type_avg_time_spent_per_visit_date`, or `patient_sum_treatment_cost_per_facility_type`.
 - [x] This skill never directs the agent to use `data_dev/` or parquet-loader SQL.
 - [x] It defines completeness, count, uniqueness on mapped grain, and not-null checks, as well as the smoke check.
+- [x] It allows only explicitly identified technical partition columns in completeness comparisons; unlisted extras and missing mapped columns remain failures.
 - [x] It keeps PostgreSQL as source and Parquet as target, and prohibits trivial always-pass checks.
 - [x] All required sections are complete and contain no unresolved placeholders.

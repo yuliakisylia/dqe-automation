@@ -4,6 +4,7 @@ Requirement(s): <requirement_id>
 Author(s): <author_name>
 """
 
+import pandas as pd
 import pytest
 
 
@@ -40,7 +41,17 @@ def test_check_dataset_is_not_empty(target_data, data_quality_library):
 @pytest.mark.parquet_data
 @pytest.mark.facility_name_min_time_spent_per_visit_date
 def test_check_data_completeness(source_data, target_data, data_quality_library):
-    data_quality_library.check_data_completeness(source_data, target_data)
+    expected_partition = (
+        pd.to_datetime(target_data["visit_date"]).dt.to_period("M").astype(str)
+    )
+    data_quality_library.check_partition_column_consistency(
+        target_data, "partition_date", expected_partition
+    )
+    data_quality_library.check_data_completeness(
+        source_data,
+        target_data,
+        allowed_partition_columns=["partition_date"],
+    )
 
 
 @pytest.mark.parquet_data
