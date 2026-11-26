@@ -119,3 +119,70 @@ def test_partition_column_consistency_detects_incorrect_value(data_quality_libra
         data_quality_library.check_partition_column_consistency(
             actual, "partition_date", expected_partition
         )
+
+
+def test_partition_column_consistency_accepts_categorical_actual_values(
+    data_quality_library,
+):
+    actual = pd.DataFrame(
+        {"partition_date": pd.Categorical(["2026-11", "2026-12"])}
+    )
+    expected = pd.Series(["2026-11", "2026-12"], dtype=object)
+
+    data_quality_library.check_partition_column_consistency(
+        actual, "partition_date", expected
+    )
+
+
+def test_partition_column_consistency_reports_actual_value_mismatches(
+    data_quality_library,
+):
+    actual = pd.DataFrame(
+        {"partition_date": pd.Categorical(["2026-11", "2026-10"])}
+    )
+    expected = pd.Series(["2026-11", "2026-12"], dtype=object)
+
+    with pytest.raises(AssertionError) as error:
+        data_quality_library.check_partition_column_consistency(
+            actual, "partition_date", expected
+        )
+
+    assert "2026-12" in str(error.value)
+    assert "2026-10" in str(error.value)
+
+
+@pytest.mark.parametrize(
+    ("actual_values", "expected_values"),
+    [
+        (["2026-11", None], ["2026-11", "2026-12"]),
+        (["2026-11", "2026-12"], ["2026-11", None]),
+    ],
+)
+def test_partition_column_consistency_detects_null_mismatches(
+    data_quality_library, actual_values, expected_values
+):
+    actual = pd.DataFrame(
+        {"partition_date": pd.Categorical(actual_values)}
+    )
+    expected = pd.Series(expected_values, dtype=object)
+
+    with pytest.raises(
+        AssertionError, match="does not match its business values"
+    ) as error:
+        data_quality_library.check_partition_column_consistency(
+            actual, "partition_date", expected
+        )
+    assert "2026-12" in str(error.value)
+
+
+def test_partition_column_consistency_treats_matching_nulls_as_equal(
+    data_quality_library,
+):
+    actual = pd.DataFrame(
+        {"partition_date": pd.Categorical(["2026-11", None])}
+    )
+    expected = pd.Series(["2026-11", None], dtype=object)
+
+    data_quality_library.check_partition_column_consistency(
+        actual, "partition_date", expected
+    )

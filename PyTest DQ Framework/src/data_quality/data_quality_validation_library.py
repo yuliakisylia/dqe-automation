@@ -125,22 +125,19 @@ class DataQualityLibrary:
                 f"received {len(expected)}."
             )
 
-        try:
-            pd.testing.assert_series_equal(
-                actual,
-                expected,
-                check_dtype=False,
-                check_names=False,
-            )
-        except AssertionError as error:
-            matches = actual.eq(expected) | (actual.isna() & expected.isna())
+        actual_values = actual.astype(object)
+        expected_values = expected.astype(object)
+        matches = actual_values.eq(expected_values).fillna(False) | (
+            actual_values.isna() & expected_values.isna()
+        )
+        if not matches.all():
             mismatches = pd.DataFrame(
-                {"expected": expected, "actual": actual}
+                {"expected": expected_values, "actual": actual_values}
             ).loc[~matches].head(10)
             raise AssertionError(
                 f"Partition column '{partition_column}' does not match its "
                 f"business values.\nMismatches:\n{mismatches}"
-            ) from error
+            )
 
     @staticmethod
     def check_count(df_expected: pd.DataFrame, df_actual: pd.DataFrame) -> None:
