@@ -5,7 +5,10 @@ pipeline {
         stage('Install dependencies') {
             steps {
                 dir('PyTest DQ Framework') {
-                    sh 'python -m pip install -r requirements.txt'
+                    sh '''
+                        python3 -m venv .venv
+                        .venv/bin/python -m pip install -r requirements.txt
+                    '''
                 }
             }
         }
@@ -21,7 +24,7 @@ pipeline {
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                             sh '''
                                 mkdir -p html_report
-                                pytest tests -m "parquet_data" \
+                                .venv/bin/python -m pytest tests -m "parquet_data" \
                                     --db_host="postgres" \
                                     --db_port="5432" \
                                     --db_name="mydatabase" \
